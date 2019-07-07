@@ -1,0 +1,16 @@
+{
+  "host": "8.8.8.8",
+  "proto": 136,
+  "interfaces": {
+    "eno2": {
+      "metric": 88,
+      "count": 10,
+      "max_lost": 5,
+      "max_delay": 100
+    },
+    "wlo1": {
+      "metric": 50
+    }
+  },
+  "period": 5
+}
