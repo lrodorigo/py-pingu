@@ -1,5 +1,6 @@
 # py-pingu
 A Linux routing daemon with multi-gateway failover selection and metric assignment. Designed to work with dynamically assigned IP addresses.
+It can run **as standalone executable** (thanks to `py-installer`) and has been tested both on *x86_64* and *arm64v8* architectures.
 
 ## How it works? 
 py-pingu continuously monitors the main Linux routing table, when a new default gateway is added, py-pingu fetches the destination IP address and it removes from the kernel he associated route.
@@ -31,10 +32,12 @@ If the `host` correctly replies to the ICMP requests (and the `max_lost` and `ma
 ```
 
 ## Requirements 
-py-pingu continuously monitors the main Linux routing table, when a new default gateway is added, py-pingu fetches the destination IP address and it removes from the kernel he associated route.
+py-pingu only requires `scapy` and `pyroute2` packages.
+`pip3 install --no-cache-dir scapy pyroute2`
 
-Periodically it tries to ping the `host` IP address by using the discovered default gateway for each interface in `config.json` (no routes are installed for an interface if a corresponding default gateway has not been discovered)
+## Building 
+py-pingu only requires `scapy` and `pyroute2` packages.
+`pip3 install --no-cache-dir scapy pyroute2`
 
-If the `host` correctly replies to the ICMP requests (and the `max_lost` and `max_delay` conditions are met) the corresponding default gateway route is installed, by using the metric and the proto specified (for each interface) in the configuration file and the.
 
 
