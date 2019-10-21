@@ -4,11 +4,11 @@ A Linux routing daemon with multi-gateway failover selection and metric assignme
 It can also run **as standalone executable** (thanks to `py-installer`) and has been tested both on *x86_64* and *arm64v8* architectures.
 
 ## How it works? 
-py-pingu continuously monitors the main Linux routing table, when a new default gateway is added, py-pingu fetches the destination IP address and it removes from the kernel he associated route.
+py-pingu continuously monitors the main Linux routing table. When a default gateway is added to the routing table, py-pingu fetches the destination IP address and removes the entry from the routing table.
 
-Periodically it tries to ping the `host` IP address by using the discovered default gateway for each interface in `config.json` (no routes are installed for an interface if a corresponding default gateway has not been discovered)
+Periodically (each `period` seconds), for each interface in `config.json`, it tries to ping IP address by using the discovered default gateway (an interface is not used if a corresponding default gateway has not been discovered)
 
-If the `host` correctly replies to the ICMP requests (and the `max_lost` and `max_delay` conditions are met) the corresponding default gateway route is installed, by using the metric and the proto specified (for each interface) in the configuration file and the.
+If the `host` correctly replies to the ICMP requests (and the `max_lost` and `max_delay` conditions are met) the corresponding default gateway route is installed, with *metric* and *proto* fields set as specified (for each interface) in the configuration file.
 
 
 ## Example Configuration File
@@ -19,7 +19,7 @@ If the `host` correctly replies to the ICMP requests (and the `max_lost` and `ma
   "proto": 136, // Proto number of the routes installed by py-pingu
   "interfaces": {  // map of all monitored interfaces
     "eno2": { // interface name
-      "metric": 88, // if the interface is ok the host then the route will be installed with this metric
+      "metric": 100, // if the interface is ok the host then the route will be installed with this metric
       "count": 10, // count of sent ICMP requests
       "max_lost": 5, // maximum number of lost packets (if lost > max_lost the gw of this interface will be disabled)
       "max_delay": 100 // maximum average delay (
@@ -34,6 +34,7 @@ If the `host` correctly replies to the ICMP requests (and the `max_lost` and `ma
 
 ## Requirements 
 py-pingu only requires `scapy` and `pyroute2` packages.
+
 `pip3 install --no-cache-dir scapy pyroute2`
 
 ## Building 
