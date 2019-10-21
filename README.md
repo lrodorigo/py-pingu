@@ -32,6 +32,15 @@ If the `host` correctly replies to the ICMP requests (and the `max_lost` and `ma
 }
 ```
 
+## Startup
+`py-pingu --config config.json`
+
+or 
+
+`py-pingu --config config.json -v`
+
+if you want enabled verbose mode.
+
 ## Requirements 
 py-pingu only requires `scapy` and `pyroute2` packages.
 
