@@ -3,7 +3,7 @@ A Linux routing daemon with multi-gateway failover selection and metric assignme
 
 It can also run **as standalone executable** (thanks to `py-installer`) and has been tested both on *x86_64* and *arm64v8* architectures.
 
-## How it works? 
+## How does it works? 
 py-pingu continuously monitors the main Linux routing table. When a default gateway is added to the routing table, py-pingu fetches the destination IP address and removes the entry from the routing table.
 
 Periodically (each `period` seconds), for each interface in `config.json`, it tries to ping the specified `host` using the discovered default gateway for the interface (an interface is not probed if its default gateway has not been discovered)
