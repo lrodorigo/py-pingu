@@ -16,7 +16,6 @@ from scapy.layers.l2 import Ether, ARP
 from scapy.sendrecv import sndrcv
 
 PINGU_PROTO = 89
-LOST_REGEX = re.compile("\s*Lost\: ([0-9]+)")
 
 FORMAT = '[%(levelname)s] %(message)s'
 
@@ -85,11 +84,27 @@ class Pingu(object):
 
                         if message["dst_len"] == 0 and message["src_len"] == 0 and \
                                 message["table"] == 254 and message["proto"] != self.DEFAULT_PROTO:
+
                             gw = self.get_attribute(message, "RTA_GATEWAY")
 
                             with IPRoute() as ipr2:
-                                ipr2.route("del", dst_len=0, src_len=0, gateway=gw,
-                                           table=254, oif=message.get_attr("RTA_OIF"))
+                                kwargs = dict(dst_len=0,
+                                              src_len=0,
+                                              type=message['type'],
+                                              scope=message['scope'],
+                                              oif=message.get_attr("RTA_OIF"))
+
+                                #
+                                # route scope is == 253 if the destination network is on the local host,
+                                # so the fetched gateway will be null
+                                #
+                                #   eg. ip route add default dev eth0
+                                #
+
+                                if gw is not None and message['scope'] != 253:
+                                    kwargs["gateway"] = gw
+
+                                ipr2.route("del", **kwargs)
                             self.log.info("Fetched new default gw for interface %s: %s " % (iface, gw))
 
                             self.gateways[iface] = gw
@@ -129,8 +144,15 @@ class Pingu(object):
         self.log.info("Loaded %s gateways from routing table" % len(self.gateways))
 
     def get_gw_mac_address(self, iface):
-        arp_req = Ether(dst="ff:ff:ff:ff:ff:ff", src=get_if_hwaddr(iface)) / \
-                  ARP(pdst=self.gateways[iface], psrc=get_if_addr(iface), hwsrc=get_if_hwaddr(iface))
+        arp_req_ip_dst = self.gateways[iface]
+        #
+        # if arp_req_ip_dst is None:
+        #     arp_req_ip_dst = get_if_addr(iface)
+        #
+        source_hw_addr = get_if_hwaddr(iface)
+
+        arp_req = Ether(dst="ff:ff:ff:ff:ff:ff", src=source_hw_addr) / \
+                  ARP(pdst=arp_req_ip_dst, psrc=get_if_addr(iface), hwsrc=source_hw_addr)
         ans, unans = sndrcv(self.l2_sockets[iface], arp_req, timeout=1, verbose=0)
 
         if len(ans) < 1:
@@ -159,9 +181,12 @@ class Pingu(object):
             delays = []
 
             id = random.randint(1, 65535)
+
+            if_hw_addr = get_if_hwaddr(interface)
+            if_addr = get_if_addr(interface)
             for i in range(count):
-                packet = Ether(dst=mac_address_gw, src=get_if_hwaddr(interface)) / \
-                         IP(src=get_if_addr(interface), dst=self.configuration["host"]) / \
+                packet = Ether(dst=mac_address_gw, src=if_hw_addr) / \
+                         IP(src=if_addr, dst=self.configuration["host"]) / \
                          ICMP(id=id, seq=i + 1)
 
                 ans, unans = sndrcv(self.l2_sockets[interface], packet, timeout=1, verbose=0)
@@ -257,6 +282,10 @@ class Pingu(object):
             if message["event"] == "RTM_NEWROUTE":
                 self.event_queue.put(message)
 
+    def print_fetched_gws(self,a,b):
+        with self.gw_lock:
+            self.log.info("Fetched gateways:\n %s\n " % json.dumps(self.gateways))
+
     def run(self):
         self.ipdb.register_callback(self.callback, )
 
@@ -265,6 +294,7 @@ class Pingu(object):
         self.route_monitor.start()
 
         signal.signal(signal.SIGINT, lambda x, y: self.exited.set())
+        signal.signal(signal.SIGUSR1, self.print_fetched_gws)
 
         self.load_route_table()
 
@@ -281,6 +311,8 @@ class Pingu(object):
                     try:
                         self.l2_sockets[name] = L2Socket(iface=name, filter="arp or (icmp and src host %s)" % self.configuration["host"])
                     except Exception as ex:
+                        if "permission" in str(ex):
+                            self.log.exception("Error while opening filter: ")
                         continue
 
                     with self.gw_lock:

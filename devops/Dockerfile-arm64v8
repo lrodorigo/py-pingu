@@ -15,7 +15,7 @@ WORKDIR /
 #
 #RUN pip3 install --no-cache-dir -r requirements.txt
 
-ADD ./pypingu.py /pypingu/
+ADD ./src/* /pypingu/
 
 RUN pyinstaller -F /pypingu/pypingu.py
 

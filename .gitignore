@@ -1,5 +1,7 @@
 .idea/
 out/*
 !out/.keep
+devout/out
+devops/out/*
 *.pyc
 __pycache__/
