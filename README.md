@@ -63,7 +63,10 @@ You can uncomment `ARCH=x86` line to build an x86 executable.
 - It's now possible to probe each interface using a different wait period. (e.g. `wlo1` each 20 seconds, `eth0` each 200 seconds).
 - Added the support for non-ethernet interfaces (such as PPP serial modem). 
 When using a non-ethernet interface a L3 raw-socket is used and the ARP resolution is not performed.
-The destination gateway for point-to-point interfaces is shown as `None` in the log.
+- Bug fix when fetching `host-scoped` routes. Now the routes are correctly fetched, installed and removed. Anyway
+the destination gateway for an `host-scoped` route is shown as `None` in the log. 
+ (e.g. 
+`[INFO] Fetched new default gw for interface ppp0: None`)
  
 ## Authors
 
