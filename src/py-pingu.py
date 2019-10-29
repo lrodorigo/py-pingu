@@ -154,16 +154,14 @@ class Pingu(object):
         self.log.info("Loaded %s gateways from routing table" % len(self.gateways))
 
     def get_gw_mac_address(self, iface):
+
         arp_req_ip_dst = self.gateways[iface]
-        #
-        # if arp_req_ip_dst is None:
-        #     arp_req_ip_dst = get_if_addr(iface)
-        #
 
         source_hw_addr = get_if_hwaddr(iface)
 
         arp_req = Ether(dst="ff:ff:ff:ff:ff:ff", src=source_hw_addr) / \
                   ARP(pdst=arp_req_ip_dst, psrc=get_if_addr(iface), hwsrc=source_hw_addr)
+
         ans, unans = sndrcv(self.sockets[iface], arp_req, timeout=1, verbose=0)
 
         if len(ans) < 1:
