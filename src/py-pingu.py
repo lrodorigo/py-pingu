@@ -58,8 +58,11 @@ class Pingu(object):
         self.sockets = {}
         self.route_monitor = Thread(target=self.route_monitor_thread)
         self.next_check_timestamps = {}
+
+        self.loop_event = Event()
         self.exited = Event()
         self.exited.clear()
+
         self.base_period = configuration.get("period", 5)
         self.configuration = configuration
 
@@ -118,6 +121,8 @@ class Pingu(object):
                             self.log.info("Fetched new default gw for interface %s: %s " % (iface, gw))
 
                             self.gateways[iface] = gw
+                            self.next_check_timestamps[iface] = -1
+                            self.loop_event.set()
 
                 except Exception as ex:
                     self.log.exception("Exception in route_monitor_thread")
@@ -155,19 +160,22 @@ class Pingu(object):
 
     def get_gw_mac_address(self, iface):
 
-        arp_req_ip_dst = self.gateways[iface]
+        for i in range(5):
+            arp_req_ip_dst = self.gateways[iface]
 
-        source_hw_addr = get_if_hwaddr(iface)
+            source_hw_addr = get_if_hwaddr(iface)
 
-        arp_req = Ether(dst="ff:ff:ff:ff:ff:ff", src=source_hw_addr) / \
-                  ARP(pdst=arp_req_ip_dst, psrc=get_if_addr(iface), hwsrc=source_hw_addr)
+            arp_req = Ether(dst="ff:ff:ff:ff:ff:ff", src=source_hw_addr) / \
+                      ARP(pdst=arp_req_ip_dst, psrc=get_if_addr(iface), hwsrc=source_hw_addr)
 
-        ans, unans = sndrcv(self.sockets[iface], arp_req, timeout=1, verbose=0)
+            ans, unans = sndrcv(self.sockets[iface], arp_req, timeout=1, verbose=0)
 
-        if len(ans) < 1:
-            raise ConnectionError("ARP Resolution Failed for %s (%s)" % (self.gateways[iface], iface))
+            if len(ans) < 1:
+                continue
 
-        return ans[0][1].src
+            return ans[0][1].src
+
+        raise ConnectionError("ARP Resolution Failed for %s (%s)" % (self.gateways[iface], iface))
 
     def use_l2_packet(self, interface):
         addrfamily, mac = get_if_raw_hwaddr(interface)
@@ -176,6 +184,7 @@ class Pingu(object):
     def check_interface(self, interface):
         try:
             if interface not in self.gateways:
+                self.log.debug("No gateway fetched for %s" % interface)
                 return False
 
             if hasattr(self.ipdb.interfaces[interface], "carrier") and self.ipdb.interfaces[interface].carrier == 0:
@@ -328,7 +337,7 @@ class Pingu(object):
 
     def load_next_checks(self):
         for i in self.configuration["interfaces"].keys():
-            self.next_check_timestamps[i] = self.get_interface_next_check(i)
+            self.next_check_timestamps[i] = -1
 
     def run_on_interface(self, interface):
         try:
@@ -362,14 +371,18 @@ class Pingu(object):
         delta = expiration - now
         return v, delta if delta > 0 else 0
 
+    def on_sigint(self, a, b):
+        self.exited.set()
+        self.loop_event.set()
+
     def run(self):
         self.ipdb.register_callback(self.callback, )
 
-        self.log.info("Welcome to Pingu! ")
+        self.log.info("Welcome to py-pingu! ")
         self.log.info(json.dumps(self.configuration, indent=2))
         self.route_monitor.start()
 
-        signal.signal(signal.SIGINT, lambda x, y: self.exited.set())
+        signal.signal(signal.SIGINT, self.on_sigint)
         signal.signal(signal.SIGUSR1, self.print_fetched_gws)
 
         self.load_route_table()
@@ -380,7 +393,8 @@ class Pingu(object):
             name, period = self.fetch_next_interface()
 
             if period > 0:
-                if self.exited.wait(timeout=period):
+                if self.loop_event.wait(timeout=period):
+                    self.loop_event.clear()
                     continue
 
             try:
@@ -388,6 +402,7 @@ class Pingu(object):
                 ifaces = get_if_list()
 
                 if name not in ifaces:
+                    self.log.debug("Interface %s does not exists." % name)
                     continue
 
                 self.run_on_interface(name)

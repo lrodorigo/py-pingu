@@ -21,13 +21,14 @@ If the `host` correctly replies to the ICMP requests (and the `max_lost` and `ma
       "metric": 100, // if the interface is ok the host then the route will be installed with this metric
       "count": 10, // count of sent ICMP requests
       "max_lost": 5, // maximum number of lost packets (if lost > max_lost the gw of this interface will be disabled)
-      "max_delay": 100 // maximum average delay (
+      "max_delay": 100, // maximum average delay (
+      "period": 10 // probe eno2 each 10 seconds
     },
     "wlo1": {
-      "metric": 50
+      "metric": 50,
+      "period": 50 // probe wlo1 each 50 seconds
     }
-  },
-  "period": 5 // a ping loop will be executed each 'period' seconds on all above defined interfaces
+  }
 }
 ```
 
@@ -59,8 +60,10 @@ You can uncomment `ARCH=x86` line to build an x86 executable.
 
 ## Changelog
 29/10/2019
-- Added support for non-ethernet interfaces (such as PPP serial modem).
-When using a non-ethernet interface a L3 raw-socket is used.
+- It's now possible to probe each interface using a different wait period. (e.g. `wlo1` each 20 seconds, `eth0` each 200 seconds).
+- Added the support for non-ethernet interfaces (such as PPP serial modem). 
+When using a non-ethernet interface a L3 raw-socket is used and the ARP resolution is not performed.
+The destination gateway for point-to-point interfaces is shown as `None` in the log.
  
 ## Authors
 
