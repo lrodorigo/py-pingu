@@ -10,6 +10,7 @@ from threading import Thread, Lock, Event
 
 from pyroute2 import IPRoute, IPDB
 from scapy.arch import get_if_hwaddr, L2Socket, get_if_addr, get_if_list, get_if_raw_hwaddr
+from scapy.arch.linux import L3PacketSocket
 from scapy.data import ARPHDR_ETHER, ARPHDR_LOOPBACK
 from scapy.layers.inet import IP, ICMP, icmptypes
 from scapy.layers.l2 import Ether, ARP
@@ -170,7 +171,7 @@ class Pingu(object):
         return ans[0][1].src
 
     def use_l2_packet(self, interface):
-        addrfamily, mac = get_if_raw_hwaddr(interface)  # noqa: F405
+        addrfamily, mac = get_if_raw_hwaddr(interface)
         return addrfamily in [ARPHDR_ETHER, ARPHDR_LOOPBACK]
 
     def check_interface(self, interface):
@@ -200,10 +201,18 @@ class Pingu(object):
 
                 if_hw_addr = get_if_hwaddr(interface)
                 header = Ether(dst=mac_address_gw, src=if_hw_addr)
+
             else:
+                # if using an L3 socket for this interface ->
+                # add scapy route to route L3 traffic on the probed interface
+                # the route will not be added to the kernel routing table
+                scapyconf.route.add(net='%s/32' % self.configuration["host"], dev=interface)
                 header = None
 
             for i in range(count):
+
+                if self.exited.is_set():
+                    return
 
                 if header:
                     packet = header / \
@@ -229,7 +238,11 @@ class Pingu(object):
                 else:
                     self.log.debug("[%s] Missed ping id=%s seq=%s  - Timeout" % (interface, id, i + 1))
 
-                time.sleep(DEFAULT_DELAY / 1000)
+                self.exited.wait(timeout=DEFAULT_DELAY / 1000)
+
+            # if using an L3 socket for this interface -> remove scapy route
+            if header is None:
+                scapyconf.route.delt(net='%s/32' % self.configuration["host"], dev=interface)
 
             if len(delays) == 0:
                 return False
@@ -334,13 +347,14 @@ class Pingu(object):
                 try:
 
                     try:
+
                         if self.use_l2_packet(name):
                             self.sockets[name] = L2Socket(iface=name,
                                                           filter="arp or (icmp and src host %s)" % self.configuration[
                                                               "host"])
                         else:
-                            self.sockets[name] = L3RawSocket(iface=name,
-                                                             filter="icmp and src host %s" % self.configuration["host"])
+                            self.sockets[name] = L3PacketSocket(iface=name)
+
                     except Exception as ex:
                         if "permission" in str(ex):
                             self.log.exception("Error while opening filter: ")
