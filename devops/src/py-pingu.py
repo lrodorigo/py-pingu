@@ -1,7 +1,6 @@
 import argparse
 import json
 import logging
-import re
 
 import random
 import signal
@@ -10,10 +9,15 @@ from queue import Queue, Empty
 from threading import Thread, Lock, Event
 
 from pyroute2 import IPRoute, IPDB
-from scapy.arch import get_if_hwaddr, L2Socket, get_if_addr, get_if_list
+from scapy.arch import get_if_hwaddr, L2Socket, get_if_addr, get_if_list, get_if_raw_hwaddr
+from scapy.arch.linux import L3PacketSocket
+from scapy.data import ARPHDR_ETHER, ARPHDR_LOOPBACK
 from scapy.layers.inet import IP, ICMP, icmptypes
 from scapy.layers.l2 import Ether, ARP
 from scapy.sendrecv import sndrcv
+from scapy.supersocket import L3RawSocket
+
+from scapy.all import conf as scapyconf
 
 PINGU_PROTO = 89
 
@@ -52,11 +56,16 @@ class Pingu(object):
         self.event_queue = Queue()
         self.DEFAULT_PROTO = configuration.get("proto", PINGU_PROTO)
         self.gw_lock = Lock()
-        self.l2_sockets = {}
+        self.sockets = {}
         self.route_monitor = Thread(target=self.route_monitor_thread)
         self.exited = Event()
         self.exited.clear()
         self.configuration = configuration
+
+        self.configure_scapy()
+
+    def configure_scapy(self):
+        scapyconf.sniff_promisc = 0
 
     def get_ip(self, idx, addrs):
         for a in addrs:
@@ -149,16 +158,21 @@ class Pingu(object):
         # if arp_req_ip_dst is None:
         #     arp_req_ip_dst = get_if_addr(iface)
         #
+
         source_hw_addr = get_if_hwaddr(iface)
 
         arp_req = Ether(dst="ff:ff:ff:ff:ff:ff", src=source_hw_addr) / \
                   ARP(pdst=arp_req_ip_dst, psrc=get_if_addr(iface), hwsrc=source_hw_addr)
-        ans, unans = sndrcv(self.l2_sockets[iface], arp_req, timeout=1, verbose=0)
+        ans, unans = sndrcv(self.sockets[iface], arp_req, timeout=1, verbose=0)
 
         if len(ans) < 1:
             raise ConnectionError("ARP Resolution Failed for %s (%s)" % (self.gateways[iface], iface))
 
         return ans[0][1].src
+
+    def use_l2_packet(self, interface):
+        addrfamily, mac = get_if_raw_hwaddr(interface)
+        return addrfamily in [ARPHDR_ETHER, ARPHDR_LOOPBACK]
 
     def check_interface(self, interface):
         try:
@@ -168,28 +182,47 @@ class Pingu(object):
             if hasattr(self.ipdb.interfaces[interface], "carrier") and self.ipdb.interfaces[interface].carrier == 0:
                 return False
 
-            try:
-                mac_address_gw = self.get_gw_mac_address(interface)
-            except ConnectionError as ex:
-                self.log.error(ex.args[0])
-                return False
-
             count = self.configuration["interfaces"][interface].get("count", DEFAULT_COUNT)
             max_lost = self.configuration["interfaces"][interface].get("max_lost", DEFAULT_MAX_LOST)
             max_delay = self.configuration["interfaces"][interface].get("max_delay", DEFAULT_MAX_DELAY)
 
             delays = []
-
             id = random.randint(1, 65535)
 
-            if_hw_addr = get_if_hwaddr(interface)
             if_addr = get_if_addr(interface)
-            for i in range(count):
-                packet = Ether(dst=mac_address_gw, src=if_hw_addr) / \
-                         IP(src=if_addr, dst=self.configuration["host"]) / \
-                         ICMP(id=id, seq=i + 1)
 
-                ans, unans = sndrcv(self.l2_sockets[interface], packet, timeout=1, verbose=0)
+            if self.use_l2_packet(interface):
+
+                try:
+                    mac_address_gw = self.get_gw_mac_address(interface)
+                except ConnectionError as ex:
+                    self.log.error(ex.args[0])
+                    return False
+
+                if_hw_addr = get_if_hwaddr(interface)
+                header = Ether(dst=mac_address_gw, src=if_hw_addr)
+
+            else:
+                # if using an L3 socket for this interface ->
+                # add scapy route to route L3 traffic on the probed interface
+                # the route will not be added to the kernel routing table
+                scapyconf.route.add(net='%s/32' % self.configuration["host"], dev=interface)
+                header = None
+
+            for i in range(count):
+
+                if self.exited.is_set():
+                    return
+
+                if header:
+                    packet = header / \
+                             IP(src=if_addr, dst=self.configuration["host"]) / \
+                             ICMP(id=id, seq=i + 1)
+                else:
+                    packet = IP(src=if_addr, dst=self.configuration["host"]) / \
+                             ICMP(id=id, seq=i + 1)
+
+                ans, unans = sndrcv(self.sockets[interface], packet, timeout=1, verbose=0)
 
                 # self.log.debug("Ping sent")
                 if len(ans) > 0:
@@ -199,12 +232,17 @@ class Pingu(object):
                         delta = rx.time - tx.sent_time
                         delays.append(delta)
                     else:
-                        self.log.debug("[%s] Missed ping seq=%s - ICMP Recv Type: %s (must be 0) - Id: %s (must be %s) " %
-                                       (interface, i+1, ans[0][1][ICMP].type, ans[0][1][ICMP].id, id))
+                        self.log.debug(
+                            "[%s] Missed ping seq=%s - ICMP Recv Type: %s (must be 0) - Id: %s (must be %s) " %
+                            (interface, i + 1, ans[0][1][ICMP].type, ans[0][1][ICMP].id, id))
                 else:
                     self.log.debug("[%s] Missed ping id=%s seq=%s  - Timeout" % (interface, id, i + 1))
 
-                time.sleep(DEFAULT_DELAY / 1000)
+                self.exited.wait(timeout=DEFAULT_DELAY / 1000)
+
+            # if using an L3 socket for this interface -> remove scapy route
+            if header is None:
+                scapyconf.route.delt(net='%s/32' % self.configuration["host"], dev=interface)
 
             if len(delays) == 0:
                 return False
@@ -282,7 +320,7 @@ class Pingu(object):
             if message["event"] == "RTM_NEWROUTE":
                 self.event_queue.put(message)
 
-    def print_fetched_gws(self,a,b):
+    def print_fetched_gws(self, a, b):
         with self.gw_lock:
             self.log.info("Fetched gateways:\n %s\n " % json.dumps(self.gateways))
 
@@ -309,10 +347,21 @@ class Pingu(object):
                 try:
 
                     try:
-                        self.l2_sockets[name] = L2Socket(iface=name, filter="arp or (icmp and src host %s)" % self.configuration["host"])
+
+                        if self.use_l2_packet(name):
+                            self.sockets[name] = L2Socket(iface=name,
+                                                          filter="arp or (icmp and src host %s)" % self.configuration[
+                                                              "host"])
+                        else:
+                            self.sockets[name] = L3PacketSocket(iface=name)
+
                     except Exception as ex:
                         if "permission" in str(ex):
                             self.log.exception("Error while opening filter: ")
+                        # if "tcpdump" in str(ex).lower():
+                        #     self.log.error("py-pingu requires tcpdump executable, please install tcpdump.")
+                        #     exit(1)
+
                         continue
 
                     with self.gw_lock:

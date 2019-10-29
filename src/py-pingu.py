@@ -12,10 +12,9 @@ from pyroute2 import IPRoute, IPDB
 from scapy.arch import get_if_hwaddr, L2Socket, get_if_addr, get_if_list, get_if_raw_hwaddr
 from scapy.arch.linux import L3PacketSocket
 from scapy.data import ARPHDR_ETHER, ARPHDR_LOOPBACK
-from scapy.layers.inet import IP, ICMP, icmptypes
+from scapy.layers.inet import IP, ICMP
 from scapy.layers.l2 import Ether, ARP
 from scapy.sendrecv import sndrcv
-from scapy.supersocket import L3RawSocket
 
 from scapy.all import conf as scapyconf
 
@@ -58,8 +57,10 @@ class Pingu(object):
         self.gw_lock = Lock()
         self.sockets = {}
         self.route_monitor = Thread(target=self.route_monitor_thread)
+        self.next_check_timestamps = {}
         self.exited = Event()
         self.exited.clear()
+        self.base_period = configuration.get("period", 5)
         self.configuration = configuration
 
         self.configure_scapy()
@@ -324,6 +325,45 @@ class Pingu(object):
         with self.gw_lock:
             self.log.info("Fetched gateways:\n %s\n " % json.dumps(self.gateways))
 
+    def get_interface_next_check(self, interface):
+        return time.time() + self.configuration["interfaces"][interface].get("period", self.base_period)
+
+    def load_next_checks(self):
+        for i in self.configuration["interfaces"].keys():
+            self.next_check_timestamps[i] = self.get_interface_next_check(i)
+
+    def run_on_interface(self, interface):
+        try:
+
+            if self.use_l2_packet(interface):
+                self.sockets[interface] = L2Socket(iface=interface,
+                                                   filter="arp or (icmp and src host %s)" % self.configuration[
+                                                       "host"])
+            else:
+                self.sockets[interface] = L3PacketSocket(iface=interface)
+
+        except Exception as ex:
+            if "permission" in str(ex):
+                self.log.exception("Error while opening filter: ")
+            # if "tcpdump" in str(ex).lower():
+            #     self.log.error("py-pingu requires tcpdump executable, please install tcpdump.")
+            #     exit(1)
+
+            return
+
+        with self.gw_lock:
+            if self.check_interface(interface):
+                self.activate_interface(interface)
+            else:
+                self.deactivate_interface(interface)
+
+    def fetch_next_interface(self):
+        v = min(self.next_check_timestamps, key=self.next_check_timestamps.get)
+        now = time.time()
+        expiration = self.next_check_timestamps[v]
+        delta = expiration - now
+        return v, delta if delta > 0 else 0
+
     def run(self):
         self.ipdb.register_callback(self.callback, )
 
@@ -335,44 +375,29 @@ class Pingu(object):
         signal.signal(signal.SIGUSR1, self.print_fetched_gws)
 
         self.load_route_table()
+        self.load_next_checks()
 
         while not self.exited.is_set():
-            ifaces = get_if_list()
 
-            for name, metric in self.configuration["interfaces"].items():
+            name, period = self.fetch_next_interface()
+
+            if period > 0:
+                if self.exited.wait(timeout=period):
+                    continue
+
+            try:
+                self.log.debug("Probing %s" % name)
+                ifaces = get_if_list()
 
                 if name not in ifaces:
                     continue
 
-                try:
+                self.run_on_interface(name)
 
-                    try:
-
-                        if self.use_l2_packet(name):
-                            self.sockets[name] = L2Socket(iface=name,
-                                                          filter="arp or (icmp and src host %s)" % self.configuration[
-                                                              "host"])
-                        else:
-                            self.sockets[name] = L3PacketSocket(iface=name)
-
-                    except Exception as ex:
-                        if "permission" in str(ex):
-                            self.log.exception("Error while opening filter: ")
-                        # if "tcpdump" in str(ex).lower():
-                        #     self.log.error("py-pingu requires tcpdump executable, please install tcpdump.")
-                        #     exit(1)
-
-                        continue
-
-                    with self.gw_lock:
-                        if self.check_interface(name):
-                            self.activate_interface(name)
-                        else:
-                            self.deactivate_interface(name)
-                except Exception as ex:
-                    self.log.exception("Error in main loop:")
-
-            self.exited.wait(timeout=self.configuration.get("period", 5))
+            except Exception as ex:
+                self.log.exception("Error in main loop:")
+            finally:
+                self.next_check_timestamps[name] = self.get_interface_next_check(name)
 
         self.log.info("Exit signal received")
 

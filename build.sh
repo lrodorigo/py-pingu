@@ -1,6 +1,17 @@
 #!/bin/bash
 
+#######################################
+
+ARCH=arm64v8
+#ARCH=x86
+
+#######################################
+
 set -e
+
+echo "Building py-pingu static executable - arch: $ARCH"
+
+
 ORIG=$PWD
 
 register_binformat() {
@@ -12,9 +23,6 @@ register_binformat() {
     fi
 }
 
-ARCH=arm64v8
-echo "Building py-pingu static executable - arch: $ARCH"
-#ARCH=x86
 
 if [[ $ARCH == "arm64v8" ]]; then
     register_binformat
@@ -40,6 +48,6 @@ DOCKER_IMAGE_NAME=py-pingu-$ARCH
 docker build -t $DOCKER_IMAGE_NAME . -f Dockerfile-$ARCH
 docker run -it -v $PWD/$OUTPUT_PATH:/output $DOCKER_IMAGE_NAME
 
-echo "Statically linked exectable generated in  $PWD/$OUTPUT_PATH/py-pingu"
+echo "Statically linked exectable generated in  $PWD/${OUTPUT_PATH}py-pingu"
 
 

@@ -10,7 +10,6 @@ Periodically (each `period` seconds), for each interface in `config.json`, it tr
 
 If the `host` correctly replies to the ICMP requests (and the `max_lost` and `max_delay` conditions are met) the corresponding default gateway route is installed. *metric* and *proto* fields of the installed route are set as specified (for each interface) in the configuration file.
 
-
 ## Example Configuration File
 
 ```
@@ -49,8 +48,20 @@ py-pingu requires `scapy` and `pyroute2` python packages.
 In order to use Berkley Packet Filtering also the `tcpdump` is needed by py-pingu.
  
 ## Building 
+You can use the `build.sh` script to generate a statically-linked single-executable. 
+It must run as `sudo` and needs a running `docker` instance.
+
+`sudo build.sh`
+
+By default it generates an `arm64v8` executable.
+You can uncomment `ARCH=x86` line to build an x86 executable.
 
 
+## Changelog
+29/10/2019
+- Added support for non-ethernet interfaces (such as PPP serial modem).
+When using a non-ethernet interface a L3 raw-socket is used.
+ 
 ## Authors
 
 Luigi Rodorigo

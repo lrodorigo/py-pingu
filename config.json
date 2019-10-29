@@ -6,11 +6,12 @@
       "metric": 88,
       "count": 10,
       "max_lost": 5,
-      "max_delay": 100
+      "max_delay": 100,
+      "period": 20
     },
     "wlo1": {
-      "metric": 50
+      "metric": 50,
+      "period": 5
     }
-  },
-  "period": 5
+  }
 }
