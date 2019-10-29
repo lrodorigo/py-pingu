@@ -42,10 +42,12 @@ or
 if you want enabled verbose mode.
 
 ## Requirements 
-py-pingu only requires `scapy` and `pyroute2` packages.
+py-pingu requires `scapy` and `pyroute2` python packages.
 
 `pip3 install --no-cache-dir scapy pyroute2`
 
+In order to use Berkley Packet Filtering also the `tcpdump` is needed by py-pingu.
+ 
 ## Building 
 
 

@@ -17,6 +17,6 @@ WORKDIR /
 
 ADD ./src/* /pypingu/
 
-RUN pyinstaller -F /pypingu/pypingu.py
+RUN pyinstaller -F /pypingu/py-pingu.py
 
-ENTRYPOINT ["/bin/cp", "/dist/pypingu", "/output"]
+ENTRYPOINT ["/bin/cp", "/dist/py-pingu", "/output"]

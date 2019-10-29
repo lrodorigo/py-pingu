@@ -3,5 +3,6 @@ out/*
 !out/.keep
 devout/out
 devops/out/*
+devop
 *.pyc
 __pycache__/
