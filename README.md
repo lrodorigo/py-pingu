@@ -18,7 +18,7 @@ If the `host` correctly replies to the ICMP requests (and the `max_lost` and `ma
   "proto": 136, // Proto number of the routes installed by py-pingu
   "interfaces": {  // map of all monitored interfaces
     "eno2": { // interface name
-      "metric": 100, // if the interface is ok the host then the route will be installed with this metric
+      "metric": 100, // if the interface is ok (ICMP replies received and max_lost/max_delay are met) the then the route will be installed with this metric
       "count": 10, // count of sent ICMP requests
       "max_lost": 5, // maximum number of lost packets (if lost > max_lost the gw of this interface will be disabled)
       "max_delay": 100, // maximum average delay (
