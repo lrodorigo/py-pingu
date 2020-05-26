@@ -64,7 +64,7 @@ You can uncomment `ARCH=x86` line to build an x86 executable.
 
 ## Changelog
 26/05/2020
-- It's now possible to declare a `reset_script` that will be executed if the interface if the gateway is detected as faulty. 
+- It's now possible to declare a `reset_script` that will be executed if the interface gateway is detected as faulty. 
 The `reset_script_grace_period` defines the minimum time interval (in seconds) between two reset script executions. 
 
 29/10/2019
