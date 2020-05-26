@@ -1,9 +1,10 @@
 import argparse
 import json
 import logging
-
+import os
 import random
 import signal
+import subprocess
 import time
 from queue import Queue, Empty
 from threading import Thread, Lock, Event
@@ -39,7 +40,9 @@ class Pingu(object):
                         "metric": 100,
                         "count": 10,
                         "max_lost": 5,
-                        "max_delay": 100
+                        "max_delay": 100,
+                        "reset_script": None,
+                        "reset_script_grace_period": 0,
                     },
                     "wlo1": {
                         "metric": 50,
@@ -362,7 +365,31 @@ class Pingu(object):
             if self.check_interface(interface):
                 self.activate_interface(interface)
             else:
+                self.run_reset_script(interface)
                 self.deactivate_interface(interface)
+
+    def run_reset_script(self, interface):
+        script = self.configuration["interfaces"][interface].get("reset_script", None)
+        if script is None:
+            return
+        grace_period = self.configuration["interfaces"][interface].get("reset_script_grace_period", 600)
+        last = self.configuration["interfaces"][interface].get("last_reset_script_run", 0)
+        now = time.time()
+
+        if now - last < grace_period:
+            return
+
+        if not os.path.isfile(script):
+            self.log.warning("Unable to find reset script %s for %s" % (script, interface))
+            return
+
+        self.log.info("Executing reset script for %s" % interface)
+        p = subprocess.Popen(script, shell=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
+        # allow external program to work
+        p.wait()
+
+        self.configuration["interfaces"][interface]["last_reset_script_run"] = now
+
 
     def fetch_next_interface(self):
         v = min(self.next_check_timestamps, key=self.next_check_timestamps.get)

@@ -22,7 +22,11 @@ If the `host` correctly replies to the ICMP requests (and the `max_lost` and `ma
       "count": 10, // count of sent ICMP requests
       "max_lost": 5, // maximum number of lost packets (if lost > max_lost the gw of this interface will be disabled)
       "max_delay": 100, // maximum average delay (ms)
-      "period": 10 // probe eno2 each 10 seconds
+      "period": 10, // probe eno2 each 10 seconds
+      "reset_script": "/path/to/script.sh", // script executed if the interface is marked as faulty
+      "reset_script_grace_period ": 60 // minimum time interval between two reset_script executions
+
+  
     },
     "wlo1": {
       "metric": 50,
@@ -59,6 +63,10 @@ You can uncomment `ARCH=x86` line to build an x86 executable.
 
 
 ## Changelog
+26/05/2020
+- It's now possible to declare a `reset_script` that will be executed if the interface if the gateway is detected as faulty. 
+The `reset_script_grace_period` defines the minimum time interval (in seconds) between two reset script executions. 
+
 29/10/2019
 - It's now possible to probe each interface using a different wait period. (e.g. `wlo1` each 20 seconds, `eth0` each 200 seconds).
 - Added the support for non-ethernet interfaces (such as PPP serial modem). 

@@ -11,7 +11,9 @@
       "count": 10,
       "max_lost": 5,
       "max_delay": 100,
-      "period": 20
+      "period": 20,
+      "reset_script": "/workspace/reset.sh",
+      "reset_script_grace_period": 600
     },
 
     "wlo1": {
