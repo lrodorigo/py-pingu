@@ -413,6 +413,7 @@ class Pingu(object):
         signal.signal(signal.SIGUSR1, self.print_fetched_gws)
 
         self.load_route_table()
+
         self.load_next_checks()
 
         while not self.exited.is_set():
@@ -443,7 +444,7 @@ class Pingu(object):
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-
+logging.getLogger('pyroute2').setLevel(logging.CRITICAL)
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='PyPingu Routing Daemon')
@@ -456,6 +457,7 @@ if __name__ == '__main__':
     if args.config_file is not None:
         with open(args.config_file, "r") as f:
             config = json.load(f)
+
     if args.verbose:
         logging.basicConfig(format=FORMAT, level=logging.DEBUG)
     else:
