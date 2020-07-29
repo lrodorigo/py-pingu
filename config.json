@@ -1,11 +1,8 @@
 {
-
   "host": "8.8.8.8",
-
   "proto": 136,
-
+  "gateways_file": "./gw.json",
   "interfaces": {
-
     "eno2": {
       "metric": 88,
       "count": 10,
@@ -15,11 +12,9 @@
       "reset_script": "/workspace/reset.sh",
       "reset_script_grace_period": 600
     },
-
     "wlo1": {
       "metric": 50,
       "period": 50
     }
-
   }
 }

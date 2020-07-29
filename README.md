@@ -16,6 +16,7 @@ If the `host` correctly replies to the ICMP requests (and the `max_lost` and `ma
 {
   "host": "8.8.8.8", // Ping requests are sent to this host 
   "proto": 136, // Proto number of the routes installed by py-pingu
+  "gateways_file": "/tmp/path-to-file.json", // path for the file used to persist previously fetched gateways across system/daemon restart
   "interfaces": {  // map of all monitored interfaces
     "eno2": { // interface name
       "metric": 100, // if the interface is ok (ICMP replies received and max_lost/max_delay are met) the then the route will be installed with this metric
@@ -63,6 +64,11 @@ You can uncomment `ARCH=x86` line to build an x86 executable.
 
 
 ## Changelog
+29/07/2020
+- Added `gateways_file` parameter, useful to persist previously fetched gateways across system/daemon reboots.
+Each time the daemon is started, it loads the gateways from the `gateways_file`. Each time a gateway is fetched for
+an interface (and removed from the routing table), is written on the `gateways_file`.
+
 26/05/2020
 - It's now possible to declare a `reset_script` that will be executed if the interface gateway is detected as faulty. 
 The `reset_script_grace_period` defines the minimum time interval (in seconds) between two reset script executions. 

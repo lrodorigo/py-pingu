@@ -35,6 +35,7 @@ class Pingu(object):
         if configuration is None:
             configuration = {
                 "host": "8.8.8.8",
+                "gateways_file": None,
                 "interfaces": {
                     "enx0c5b8f279a64": {
                         "metric": 100,
@@ -70,6 +71,33 @@ class Pingu(object):
         self.configuration = configuration
 
         self.configure_scapy()
+        self.load_gw_from_file()
+
+    def load_gw_from_file(self):
+        filename = self.configuration.get("gateways_file", None)
+        if filename:
+            try:
+                if not os.path.isfile(filename):
+                    self.log.info("Gateways file not found.")
+
+                with open(filename, "r") as f:
+                    self.gateways = json.load(f)
+                self.log.info("Loaded %s gateways from the gateways file", len(self.gateways))
+            except Exception as ex:
+                self.log.error("Error while loading gateways file: %s" % filename, exc_info=True)
+
+    def save_gw_file(self):
+        filename = self.configuration.get("gateways_file", None)
+
+        try:
+            if not filename:
+                return
+
+            with open(filename, "w") as file:
+                json.dump(self.gateways, file)
+
+        except Exception as ex:
+            self.log.error("Error while writing gateways file: %s" % filename, exc_info=True)
 
     def configure_scapy(self):
         scapyconf.sniff_promisc = 0
@@ -78,6 +106,10 @@ class Pingu(object):
         for a in addrs:
             if a["index"] == idx:
                 return self.get_attribute(a, "IFA_ADDRESS")
+
+    def set_gw_for_iface(self, iface, gw):
+        self.gateways[iface] = gw
+        self.save_gw_file()
 
     def route_monitor_thread(self):
 
@@ -123,7 +155,8 @@ class Pingu(object):
                                 ipr2.route("del", **kwargs)
                             self.log.info("Fetched new default gw for interface %s: %s " % (iface, gw))
 
-                            self.gateways[iface] = gw
+                            self.set_gw_for_iface(iface, gw)
+
                             self.next_check_timestamps[iface] = -1
                             self.loop_event.set()
 
@@ -155,7 +188,7 @@ class Pingu(object):
                         continue
                     gw = r["route"].gateway
                     self.log.info("Fetched gateway for %s: %s" % (name, gw))
-                    self.gateways[name] = gw
+                    self.set_gw_for_iface(name, gw)
 
                     with r["route"] as to_del:
                         to_del.remove()
@@ -365,7 +398,11 @@ class Pingu(object):
             if self.check_interface(interface):
                 self.activate_interface(interface)
             else:
-                self.run_reset_script(interface)
+                try:
+                    self.run_reset_script(interface)
+                except Exception as ex:
+                    self.log.exception("Error while executing reset script - ", exc_info=True)
+
                 self.deactivate_interface(interface)
 
     def run_reset_script(self, interface):
@@ -389,7 +426,6 @@ class Pingu(object):
         p.wait()
 
         self.configuration["interfaces"][interface]["last_reset_script_run"] = now
-
 
     def fetch_next_interface(self):
         v = min(self.next_check_timestamps, key=self.next_check_timestamps.get)
@@ -436,7 +472,7 @@ class Pingu(object):
                 self.run_on_interface(name)
 
             except Exception as ex:
-                self.log.exception("Error in main loop:")
+                self.log.exception("Error in main loop:", exc_info=True)
             finally:
                 self.next_check_timestamps[name] = self.get_interface_next_check(name)
 
